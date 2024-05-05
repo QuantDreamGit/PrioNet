@@ -12,7 +12,12 @@ class Telegram:
         self.api_key = api_key
         self.chat_id = chat_id
 
-    def send_to_telegram(self, message):
+    def send_message(self, message):
+        ''' Send a message to the chat
+
+        Parameters:
+            - message (str): Message to send
+        '''
         # Set the URL
         apiURL = f'https://api.telegram.org/bot{self.api_key}/sendMessage'
         # Send a message to the chat
