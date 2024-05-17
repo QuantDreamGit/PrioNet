@@ -3,7 +3,6 @@ Author: Giuseppe Priolo
 Date: 2024-05-03
 Description: Useful functions to interact with Telegram api.
 '''
-import os
 import requests
 
 class Telegram:
