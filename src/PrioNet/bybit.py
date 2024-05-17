@@ -1,14 +1,15 @@
 from pybit.unified_trading import HTTP
 
-class ByBit:
-    def __init__(self, api_key, api_secret):
+class ByBitManager:
+    def __init__(self, api_key, api_secret, testnet=False, demo=False):
         ''' Initialize the ByBit API
 
         Parameters:
             - api_key (str): API key
             - api_secret (str): API secret
+            - testnet (bool): Testnet or not
         '''
-        self.session = HTTP(api_key, api_secret)
+        self.session = HTTP(api_key=api_key, api_secret=api_secret, testnet=testnet, demo=demo)
 
     def set_info(self, symbol, qty, tp, sl):
         ''' Set information for the order
@@ -40,11 +41,11 @@ class ByBit:
             - ask_qty (float): Ask quantity
         '''
         # Bid price -> Sell price
-        self.bid_price = self.session.get_orderbook(category="linear", symbol=self.symbol).get('result')['b'][0][0]
-        self.bid_qty = self.session.get_orderbook(category="linear", symbol=self.symbol).get('result')['b'][0][1]
+        self.bid_price = float(self.session.get_orderbook(category="linear", symbol=self.symbol).get('result')['b'][0][0])
+        self.bid_qty = float(self.session.get_orderbook(category="linear", symbol=self.symbol).get('result')['b'][0][1])
         # Ask price -> Buy price
-        self.ask_price = self.session.get_orderbook(category="linear", symbol=self.symbol).get('result')['a'][0][0]
-        self.ask_qty = self.session.get_orderbook(category="linear", symbol=self.symbol).get('result')['a'][0][1]
+        self.ask_price = float(self.session.get_orderbook(category="linear", symbol=self.symbol).get('result')['a'][0][0])
+        self.ask_qty = float(self.session.get_orderbook(category="linear", symbol=self.symbol).get('result')['a'][0][1])
         # Return prices
         return {
             'bid_price': self.bid_price,
@@ -62,38 +63,39 @@ class ByBit:
         Returns:
             - bool: Order placed successfully or not       
         '''
-        try:
-            # Register last side
-            self.side = side
+        # Register last side
+        self.side = side
+        # Check if the minimum quantity is respected
+        self.get_precision()
+        if self.qty < self.min_qty:
+            return None
+        else:
             # Get bid and ask prices
             self.bid_ask_prices()
-
             # Based on the side, place the order
             # Set stop loss and take profit
             if side == "Buy":
                 self.price = self.ask_price
-                self.take_profit = self.ask_price + (1 + self.tp)
-                self.stop_loss = self.ask_price - (1 + self.sl)
+                self.take_profit = self.ask_price * (1 + self.tp)
+                self.stop_loss = self.ask_price * (1 - self.sl)
             elif side == "Sell":
                 self.price = self.bid_price
-                self.take_profit = self.bid_price - (1 + self.tp)
-                self.stop_loss = self.bid_price + (1 + self.sl)
-
+                self.take_profit = self.bid_price * (1 - self.tp)
+                self.stop_loss = self.bid_price * (1 + self.sl)
             # Place order
-            order = self.session.place_active_order(
+            order = self.session.place_order(
                 category="linear", 
-                side=self.side, 
+                side=side, 
                 symbol=self.symbol, 
                 order_type="Market", 
-                qty=self.qty)
+                qty=self.qty,
+                takeProfit=self.take_profit,
+                stopLoss=self.stop_loss,)
             # Get order ID
-            self.order_id = order.get('result')['orderId']
-        except:
-            # Return that the order was not placed successfully
-            return False
-        
-        # Return that the order was placed successfully
-        return True
+            self.order_id = order['result']['orderId']
+            
+            # Return that the order was placed successfully
+            return order
 
     def get_position(self):
         ''' Get position informations
@@ -102,15 +104,14 @@ class ByBit:
             - dict: Position informations
         '''
         # Get position
-        position = self.session.get_positions(category='linear', symbol=self.symbol)
-        # Order informations
-        order = position['result']['list'][0]
+        position = self.session.get_positions(category='linear', symbol=self.symbol)['result']['list'][0]
         # Get position informations
-        self.position_side = order['side']
-        self.position_size = order['size']
-        self.position_avgprice = order['avgPrice']
-        self.position_value = order['positionValue']
-        self.position_price = order['markPrice']
+        self.position_side = position['side']
+        self.position_size = position['size']
+        self.position_avgprice = position['avgPrice']
+        self.position_value = position['positionValue']
+        self.pnl = position['unrealisedPnl']
+        self.position_price = position['markPrice']
 
         # Return position informations
         return {
@@ -131,7 +132,7 @@ class ByBit:
             symbol=self.symbol
         )['result']['list'][0]
         # Get precision informations on quantity and price
-        self.min_qty = precision['lotSizeFilter']['qtyStep']
+        self.min_qty = float(precision['lotSizeFilter']['minOrderQty'])
         # At the moment, we are not using price precision
         # price = precision['priceFilter']['tickSize']
 
